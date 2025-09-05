@@ -66,3 +66,41 @@ zahra/
 ├── package.json
 ├── tailwind.config.ts
 └── tsconfig.json
+
+
+
+Quick API endpoint list (design)
+
+POST /auth/request-otp → send OTP
+
+POST /auth/verify-otp → verify, create session, set tokens
+
+POST /auth/refresh → rotate refresh, issue access token
+
+POST /auth/logout → revoke session & clear cookie
+
+POST /auth/logout-all → revoke all sessions (for user)
+
+GET /auth/sessions → list active sessions (user) — allows user to revoke specific session
+
+POST /auth/revoke-session → revoke other session by id
+
+
+
+9) Put it together — checklist for you to implement now
+
+ Implement send-otp route with rate-limiting + identical response to avoid enumeration.
+
+ Save hashed OTP + expiresAt in user doc. Reset failedOtpAttempts on new OTP.
+
+ Implement verify-otp route with timing-safe compare; on success, create sessionId & push session to user. Set HttpOnly cookie.
+
+ Add middleware to validate session cookie for protected APIs (lookup user + session).
+
+ Add logout route to mark session revoked and clear cookie.
+
+ Add monitoring/logging for OTP attempts.
+
+ Add UI flows: request OTP, submit OTP, handle errors (expired, wrong).
+
+ Optionally: integrate with Auth.js Credentials provider later (if you want built-in callbacks/session flows).

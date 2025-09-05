@@ -1,51 +1,5 @@
 import mongoose, { Schema } from "mongoose";
 
-const sizeSchema = new Schema({
-  size: {
-    type: String,
-    required: true,
-  },
-
-  stock: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
-
-  sku: {
-    type: String,
-    required: true,
-    unique: true,
-  },
-});
-
-const variantSchema = new Schema({
-  color: {
-    type: String,
-    required: true,
-  },
-
-  isActive: {
-    type: Boolean,
-    default: true,
-  },
-
-  images: [
-    {
-      public_id: {
-        type: String,
-        required: true,
-      },
-
-      secure_url: {
-        type: String,
-        required: true,
-      },
-    },
-  ],
-
-  sizes: [sizeSchema],
-});
 
 const productSchema = new Schema(
   {
@@ -59,7 +13,7 @@ const productSchema = new Schema(
     slug: {
       type: String,
       required: [true, "Slug is required"],
-      unique: true, // SEO friendly, no duplicates
+      unique: true,
       match: [
         /^[a-z0-9-]+$/,
         "Please enter a valid slug (lowercase, numbers, hyphen only)",
@@ -75,7 +29,10 @@ const productSchema = new Schema(
 
     category: {
       type: String,
-      enum: ["Bangles", "Bracelets"],
+      enum: {
+        values: ["Bangles", "Bracelets"],
+        message: "{VALUE} is not supported"
+      },
       required: [true, "Category is required"],
     },
 
@@ -102,14 +59,44 @@ const productSchema = new Schema(
       required: true,
     },
 
+    ratings: {
+      type: Number,
+      default: 0,
+      max: 5
+    },
+
+    numberOfReviews: {
+      type: Number,
+      default: 0
+    },
+
+    reviews: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Review"
+      }
+    ],
+
     images: [
       {
-        url: { type: String, required: true },
-        alt: { type: String },
+        public_id: {
+          type: String,
+          required: true
+        },
+
+        secure_url: {
+          type: String,
+          required: true
+        }
       },
     ],
 
-    variants: [variantSchema],
+    variants: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Variant"
+      }
+    ],
   },
   {
     timestamps: true,
