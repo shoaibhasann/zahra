@@ -2,9 +2,6 @@ import mongoose, { Schema } from "mongoose";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 
-// NOTE: This is schema-level only. Implement OTP generation, hashing, sending, and rate-limiting in your service layer.
-// Also implement password hashing when you add password flow (bcrypt/argon2) in auth controller.
-
 const addressSchema = new Schema({
   label: { type: String, maxlength: 30 },
   name: { type: String, required: true },
@@ -18,14 +15,14 @@ const addressSchema = new Schema({
   isDefault: { type: Boolean, default: false },
 });
 
-const otpSchema = new Schema({
-
+const otpSchema = new Schema(
+  {
     otpHash: { type: String },
 
     channel: { type: String, enum: ["sms", "email"] },
 
-    expiresAt: { type: Date, index: true }, 
-    
+    expiresAt: { type: Date, index: true },
+
     createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -151,9 +148,7 @@ const userSchema = new Schema(
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 
-// Instance helper: create OTP hash (example - use HMAC with server secret or bcrypt)
 userSchema.methods.createOtpHash = function (otpPlain) {
-  // example HMAC - prefer a secret in process.env. For production, use a secure OTP service or bcrypt + short expiry.
   const secret = process.env.OTP_SECRET || "change_me";
   return crypto.createHmac("sha256", secret).update(otpPlain).digest("hex");
 };
@@ -176,6 +171,89 @@ userSchema.methods.comparePassword = async function (password) {
   } catch (error) {
     throw error;
   }
+};
+
+userSchema.methods.generateOtp = async function (
+  channel = "sms",
+  ttlSeconds = 600
+) {
+  const plainOtp = String(Math.floor(Math.random() * 900000 + 100000));
+  const otpHash = this.createOtpHash(plainOtp);
+  const expires = new Date(Date.now() + ttlSeconds * 1000);
+
+  this.otp = {
+    otpHash,
+    channel,
+    expiresAt: expires,
+    createdAt: new Date(),
+  };
+
+  this.lastOtpSentAt = new Date();
+  this.failedOtpAttempts = 0;
+
+  return otp;
+};
+
+userSchema.methods.verifyOtp = async function (plainOtp) {
+  if (!this.otp || !this.otp.otpHash) {
+    return {
+      success: false,
+      message: "no_otp",
+    };
+  }
+
+  if (this.otp.expiresAt < new Date()) {
+    return {
+      success: false,
+      messgae: "otp_expired",
+    };
+  }
+
+  const storedHex = this.otp.otpHash;
+  const candidateHex = this.createOtpHash(plainOtp);
+
+  let match = false;
+
+  try {
+    const a = Buffer.from(storedHex, "hex");
+    const b = Buffer.from(candidateHex, "hex");
+
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+      match = true;
+    }
+  } catch (error) {
+    match = false;
+    throw error;
+  }
+
+  if (!match) {
+    this.failedOtpAttempts = (this.failedOtpAttempts || 0) + 1;
+    await this.save();
+
+    if (this.failedOtpAttempts >= 6) {
+      return {
+        success: false,
+        message: "Otp creation range exceeded",
+      };
+    }
+
+    return {
+      success: false,
+      message: "invalid",
+    };
+  }
+
+  const verifiedChannel = this.otp.channel;
+
+  this.otp = undefined;
+  this.failedOtpAttempts = 0;
+
+  if (verifiedChannel === "sms") this.phoneVerified = true;
+  if (verifiedChannel === "email") this.emailVerified = true;
+
+  await this.save();
+
+  return { sucess: true, message: "otp verified successfully" };
 };
 
 export const UserModel =

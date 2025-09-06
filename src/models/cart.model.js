@@ -68,39 +68,35 @@ const cartSchema = new Schema(
   }
 );
 
-// Indexes: fast lookups by user or guest
 cartSchema.index({ userId: 1 });
 cartSchema.index({ guestId: 1 });
 
-// helper: compute totals
+
 cartSchema.methods.recalculate = function () {
   const subtotal = (this.items || []).reduce(
-    (s, it) => s + it.priceAt * it.qty,
+    (sum, item) => sum + item.priceAt * item.quantity,
     0
   );
   this.subtotal = Math.round(subtotal);
-  // shipping/discount calculation is business logic — leave default
   this.total = Math.max(
     0,
     this.subtotal + (this.shipping || 0) - (this.discount || 0)
   );
-  return this;
+  return { subtotal, total };
 };
 
-// helper: add or update item (merges same product+variant)
+
 cartSchema.methods.addOrUpdateItem = function (newItem) {
-  // newItem: { productId, variantId, sku, title, image, priceAt, qty, metadata }
+
   const existing = this.items.find(
-    (i) =>
-      String(i.productId) === String(newItem.productId) &&
-      String(i.variantId || "") === String(newItem.variantId || "") &&
-      JSON.stringify(i.metadata || {}) ===
-        JSON.stringify(newItem.metadata || {})
+    (item) =>
+      String(item.productId) === String(newItem.productId) &&
+      String(item.variantId || "") === String(newItem.variantId || "")
   );
 
   if (existing) {
     existing.qty = Math.max(1, (existing.qty || 0) + (newItem.qty || 1));
-    existing.priceAt = newItem.priceAt; // update snapshot if you prefer
+    existing.priceAt = newItem.priceAt; 
   } else {
     this.items.push(newItem);
   }

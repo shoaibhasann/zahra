@@ -58,9 +58,9 @@ const variantSchema = new Schema({
 }, { timestamps: true}
 );
 
-// Unique SKU across all sizes in all variants:
+
 variantSchema.index({ "sizes.sku": 1 }, { unique: true, sparse: true });
-variantSchema.index({ productId: 1, color: 1 });
+variantSchema.index({ productId: 1, color: 1 }, { unique: true });
 variantSchema.index({ productId: 1 });
 
 export const VariantModel =
