@@ -4,16 +4,15 @@ import { dbConnect } from "@/lib/dbConnect";
 import { UserModel } from "@/models/user.model";
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
-const ACCESS_TOKEN_MAX_AGE = 15 * 60; // 15 minutes (seconds)
-const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60; // 7 days (seconds)
-const COOKIE_PATH = "/";
 
 const cookieOptionDefaults = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax",
-  path: COOKIE_PATH,
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60, // 7 days
 };
 
 export async function POST(request) {
@@ -23,7 +22,7 @@ export async function POST(request) {
     const { identifier, otp } = await request.json();
 
     if (!identifier || !otp) {
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: "Identifier or OTP is missing" },
         { status: 400 }
       );
@@ -37,7 +36,7 @@ export async function POST(request) {
     const normalizedEmail = isEmail && identifier.trim().toLowerCase();
 
     if (!isPhone && !isEmail) {
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: "Please enter a valid phone number or email" },
         { status: 400 }
       );
@@ -47,7 +46,7 @@ export async function POST(request) {
     const user = await UserModel.findOne(query);
 
     if (!user || !user.otp || !user.otp.otpHash) {
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: "No OTP request found. Please request a new code." },
         { status: 400 }
       );
@@ -56,7 +55,7 @@ export async function POST(request) {
     if (new Date(user.otp.expiresAt).getTime() < Date.now()) {
       user.otp = undefined;
       await user.save();
-      return Response.json({ success: false, message: "OTP has expired" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "OTP has expired" }, { status: 400 });
     }
 
     const candidateHash = await createOtpHash(otp);
@@ -71,11 +70,11 @@ export async function POST(request) {
       }
     } catch (err) {
       console.error("Error comparing OTP hashes:", err);
-      return Response.json({ success: false, message: "OTP verification failed" }, { status: 500 });
+      return NextResponse.json({ success: false, message: "OTP verification failed" }, { status: 500 });
     }
 
     if (!isOtpVerified) {
-      return Response.json({ success: false, message: "Incorrect OTP" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Incorrect OTP" }, { status: 400 });
     }
 
 
@@ -85,27 +84,17 @@ export async function POST(request) {
       user.emailVerified = true;
     }
 
+    
+    const refreshToken = await user.generateRefreshToken();
+    
     user.otp = undefined;
-
-    const { refreshToken, sessionId, refreshExpiresAt } = await user.createSession();
-
-    const accessToken = await user.generateAccessToken(sessionId);
-
     await user.save();
 
-    const cookieStore = cookies();
-
-    cookieStore.set({
-      name: "accessToken",
-      value: accessToken,
-      maxAge: ACCESS_TOKEN_MAX_AGE,
-      ...cookieOptionDefaults,
-    });
+    const cookieStore = await cookies();
 
     cookieStore.set({
       name: "refreshToken",
       value: refreshToken,
-      maxAge: REFRESH_TOKEN_MAX_AGE,
       ...cookieOptionDefaults,
     });
 
@@ -113,13 +102,11 @@ export async function POST(request) {
       success: true,
       message: "OTP verified successfully",
       id: String(user._id),
-      sessionId,
-      refreshExpiresAt,
     };
 
-    return Response.json(body, { status: 200 });
+    return NextResponse.json(body, { status: 200 });
   } catch (error) {
     console.error("Error while verifying OTP:", error);
-    return Response.json({ success: false, message: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
 }

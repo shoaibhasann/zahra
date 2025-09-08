@@ -287,3 +287,67 @@ export async function POST(req) {
   const tokens = await issueTokensForUser(user);
   return NextResponse.json({ ok: true, data: { tokens } });
 }
+
+
+review
+
+Tests for: token issuance, refresh rotation, token reuse, logout, cookie clearing, session persistence.
+
+
+Product & commerce next steps (since this is e-commerce)
+
+User account & profile:
+
+Addresses UI (CRUD + default), order history page, saved payment methods (PCI rules), wishlist.
+
+Orders & checkout core
+
+Cart, checkout flow, payment gateway integration, order model, order-confirmation emails.
+
+Inventory & product management
+
+Product/variant schemas, stock levels, admin panel to add/edit products.
+
+Payments, taxes, shipping
+
+Integrate payment gateway (Razorpay/Stripe/PayU), shipping rates, tax calculation, order fulfillment flow.
+
+Admin dashboard
+
+Users, orders, refunds/returns, coupons, analytics (sales, conversion).
+
+Testing & release checklist (pre-prod -> prod)
+
+End-to-end tests covering login → checkout → order confirmation.
+
+Load test auth endpoints (OTP, refresh) with realistic traffic patterns.
+
+Run a security review on sensitive endpoints.
+
+Verify email deliverability (seed multiple provider inboxes: Gmail, Yahoo, corporate).
+
+Prepare migration steps for hashed refresh tokens (update existing sessions).
+
+Monitoring & post-launch
+
+Logins/day, OTPs/day, bounce rates, failed deliveries, active sessions per user.
+
+Set up a dashboard and alerts for suspicious patterns (token reuse, many OTPs to single phone).
+
+Quick wins you can do in the next 1–2 hours (pick one)
+
+Hash refresh tokens and update refresh flow to compare hashes.
+
+Add revokedAt + revokeReason to sessions and persist them on logout.
+
+Add unit tests that assert logout revokes session and refresh fails afterwards.
+
+Verify Resend/Twilio setup & send a test email with proper from.
+
+If you want, I can now do any one of these fully:
+A) Write the refresh token rotation + reuse detection pseudocode and DB update logic (no runnable code).
+B) Draft the atomic logout DB query and the exact cookie headers to clear.
+C) Produce a test plan with concrete test cases and Postman/curl examples for auth flows.
+D) Design the session management UI data contract + wireframe copy (list item fields, actions).
+
+Which one shall I draft next?

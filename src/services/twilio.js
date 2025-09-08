@@ -6,14 +6,27 @@ const authToken = process.env.TWILIO_AUTH_TOKEN;
 const client = twilio(accountSid, authToken);
 
 export async function createMessage(phoneNumber, otp) {
-  const message = await client.messages.create({
-    body: `your Zahra verification code is ${otp}`,
-    from: process.env.TWILIO_PHONE_NUMBER,
-    to: phoneNumber,
-  });
+ 
+     const result = await client.messages.create({
+       body: `your Zahra verification code is ${otp}`,
+       from: process.env.TWILIO_PHONE_NUMBER,
+       to: phoneNumber,
+     });
 
-  console.log(message);
+     if(result.errorMessage){
+      console.error("Error: while sending otp to phone", twilioError);
+      return {
+        success: false,
+        message: "Error: while sending otp to phone",
+        error: twilioError,
+      };
+     }
 
-  return message
-}
+     return {
+       success: true,
+       message: "otp sent successfully",
+       data: result
+     };
+  } 
+
 

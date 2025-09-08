@@ -30,22 +30,6 @@ const otpSchema = new Schema(
   { _id: false }
 );
 
-const sessionSchema = new Schema(
-  {
-    sessionId: { type: String, required: true, index: true, unique: false },
-
-    refreshToken: { type: String, select: false },
-
-    refreshExpiresAt: { type: Date, index: true },
-
-    createdAt: { type: Date, default: Date.now },
-
-    revoked: { type: Boolean, default: false },
-
-    replacedBy: { type: String },
-  },
-  { _id: false }
-);
 
 const userSchema = new Schema(
   {
@@ -108,8 +92,6 @@ const userSchema = new Schema(
 
     isDeleted: { type: Boolean, default: false },
 
-    sessions: [sessionSchema],
-
     loyaltyPoints: { type: Number, default: 0 },
 
     totalOrders: { type: Number, default: 0 },
@@ -139,77 +121,20 @@ const userSchema = new Schema(
 );
 
 
-userSchema.methods.generateAccessToken = async function(sessionId){
+
+userSchema.methods.generateRefreshToken = function(){
   const payload = {
     sub: this._id,
-    sid: sessionId,
     role: this.role,
-    name: this.fullname
+    name: this.fullname || ""
   }
 
-  return await jwt.sign(payload, process.env.ACESS_TOKEN_SECRET, { expiresIn: process.env.ACESS_TOKEN_EXPIRY})
-}
-
-userSchema.methods.generateRefreshToken = async function(sessionId){
-  const payload = {
-    sub: this._id,
-    sid: sessionId,
-    role: this.role,
-    name: this.fullname
-  }
-
-  return await jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
+  return jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
     expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
   });
 
 }
 
-userSchema.methods.createSession = async function(){
-  const refreshToken = this.generateRefreshToken();
-
-  const now = Date.now();
-  const expires = new Date(now + (7 * 24 *  60 * 60 * 1000));
-
-  const sessionId = crypto.randomBytes(12).toString("hex");
-
-  const sessionObj = {
-    sessionId,
-    refreshToken,
-    refreshExpiresAt : expires,
-    createdAt: new Date(now),
-    revoked: false,
-    replacedBy: null
-
-  }
-
-  this.sessions = this.sessions || [];
-  this.sessions.push(sessionObj);
-
-  await this.save();
-
-  return { refreshToken, sessionId, refreshExpiresAt: expires }
-}
-
-
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-
-  try {
-    const hashedPassword = await bcrypt.hash(this.password, 10);
-    this.password = hashedPassword;
-    next();
-  } catch (error) {
-    return next(error);
-  }
-});
-
-userSchema.methods.comparePassword = async function (password) {
-  try {
-    return bcrypt.compare(password, this.password);
-  } catch (error) {
-    throw error;
-  }
-};
 
 
 export const UserModel =

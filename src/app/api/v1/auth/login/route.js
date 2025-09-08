@@ -1,9 +1,10 @@
 import { generateOtp } from "@/helpers/generateOtp";
 import { normalizeIndianPhoneNumber } from "@/helpers/validatePhone";
-import { sendOtpEmail } from "../../../../../../services/sendOtpEmail";
-import { createMessage } from "../../../../../../services/twilio";
 import { dbConnect } from "@/lib/dbConnect";
 import { UserModel } from "@/models/user.model";
+import { sendOtpEmail } from "@/services/sendOtpEmail";
+import { createMessage } from "@/services/twilio";
+import { NextResponse } from "next/server";
 
 
 function isSameDay(d1, d2) {
@@ -18,18 +19,16 @@ export async function POST(request) {
   await dbConnect();
 
   try {
+    
     const { identifier } = await request.json();
 
     if (!identifier) {
-      return Response.json(
+      return NextResponse.json(
         { success: false, message: "identifier is required" },
         { status: 400 }
       );
     }
 
-    console.log("identifier", identifier);
-
-    // Normalize identifier
     const normalizedPhone = normalizeIndianPhoneNumber(identifier);
     const isPhone = !!normalizedPhone;
 
@@ -38,7 +37,7 @@ export async function POST(request) {
     const normalizedEmail = identifier.trim().toLowerCase();
 
     if (!isPhone && !isEmail) {
-      return Response.json(
+      return NextResponse.json(
         {
           success: false,
           message: "Please enter a valid phone number or email",
@@ -53,19 +52,17 @@ export async function POST(request) {
       ? { phone: normalizedPhone }
       : { email: normalizedEmail };
 
-      console.log("channel: ", channel);
+    
 
-    // Find existing user
     const userExists = await UserModel.findOne(query);
 
 
     if (userExists) {
-      console.log("USER: ", userExists)
       if (
         userExists.lastOtpSentAt &&
         new Date(userExists.lastOtpSentAt).getTime() + 30 * 1000 > Date.now()
       ) {
-        return Response.json(
+        return NextResponse.json(
           {
             success: false,
             message: "Please wait before requesting another code",
@@ -74,13 +71,13 @@ export async function POST(request) {
         );
       }
 
-      // Daily request limit (20 per day)
+      // Rate limiting
       if (
         userExists.otpRequestCount &&
         userExists.otpRequestCount >= 20 &&
         isSameDay(new Date(userExists.lastOtpSentAt), today)
       ) {
-        return Response.json(
+        return NextResponse.json(
           { success: false, message: "OTP request limit reached for today" },
           { status: 429 }
         );
@@ -88,6 +85,7 @@ export async function POST(request) {
     }
 
     const { toStore, plainOtp } = await generateOtp(channel);
+    let newUser;
 
     if (userExists) {
       userExists.otp = { ...toStore };
@@ -101,7 +99,7 @@ export async function POST(request) {
       userExists.lastOtpSentAt = today;
       await userExists.save();
     } else {
-      await UserModel.create({
+       newUser = await UserModel.create({
         otp: { ...toStore },
         lastOtpSentAt: today,
         otpRequestCount: 1,
@@ -109,33 +107,41 @@ export async function POST(request) {
       });
     }
 
-    // Send OTP
-    let sendResult;
+    let result;
     try {
       if (isPhone) {
-        sendResult = await createMessage(normalizedPhone, plainOtp);
+        result = await createMessage(normalizedPhone, plainOtp);
       } else {
-        sendResult = await sendOtpEmail(normalizedEmail, plainOtp);
+        result = await sendOtpEmail(normalizedEmail, plainOtp);
       }
+
     } catch (error) {
       console.log("Error: in sending OTP", error)
     }
 
-    // if (!sendResult || !sendResult.success) {
-    //   console.error("OTP send failure: ", sendResult?.error || "unknown");
-    //   return Response.json(
-    //     { success: false, message: "Failed to send OTP" },
-    //     { status: 500 }
-    //   );
-    // }
+    if (!result || !result.success) {
+      if(userExists){
+        userExists.otp = undefined;
+        await userExists.save();
+      } else {
+        newUser.otp = undefined;
+        await newUser.save();
+      }
 
-    return Response.json(
-      { success: true, message: "OTP sent successfully" },
+      console.error("OTP send failure: ", result?.error || "unknown");
+      return NextResponse.json(
+        { success: false, message: "Failed to send OTP, please try again after some time" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: true, message: `OTP sent to ${isPhone ? normalizedPhone : normalizedEmail}` },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error while sending OTP:", error);
-    return Response.json(
+    return NextResponse.json(
       { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
