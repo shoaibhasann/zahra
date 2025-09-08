@@ -104,3 +104,186 @@ POST /auth/revoke-session → revoke other session by id
  Add UI flows: request OTP, submit OTP, handle errors (expired, wrong).
 
  Optionally: integrate with Auth.js Credentials provider later (if you want built-in callbacks/session flows).
+
+
+
+
+
+
+ API routes (high-level) — grouped by resource
+
+All routes under /api/v1/...
+
+Auth
+
+POST /auth/otp/send — send OTP (body: { identifier: phone|email }) — rate-limited.
+
+POST /auth/otp/verify — verify OTP (body: { identifier, otp, sessionId? }) — returns JWT + refresh token.
+
+POST /auth/register — signup (email/password) — returns tokens.
+
+POST /auth/login — login (email/password).
+
+POST /auth/refresh — refresh tokens (body: { refreshToken, sessionId }).
+
+POST /auth/logout — revoke session (auth required).
+
+POST /auth/password/forgot — request password reset.
+
+POST /auth/password/reset — reset password.
+
+Auth notes: send and verify should use rate limiting + cooldown; return minimal info on failures.
+
+Users
+
+GET /users/me — get profile (auth).
+
+PATCH /users/me — update profile (auth).
+
+GET /users/:id — get public profile (public).
+
+GET /users/:id/addresses — list addresses (auth).
+
+POST /users/me/addresses — add address (auth).
+
+PATCH /users/me/addresses/:addrId — update address (auth).
+
+DELETE /users/me/addresses/:addrId — remove address (auth).
+
+POST /users/me/set-default-address/:addrId — set default address (auth).
+
+Products & Categories
+
+GET /products — list with pagination, filters (category, price, q, sort).
+
+GET /products/:slugOrId — product details (populate variants).
+
+GET /categories — list categories.
+
+GET /categories/:id/products — products by category.
+
+Admin:
+
+POST /admin/products — create product.
+
+PATCH /admin/products/:id — update.
+
+DELETE /admin/products/:id — delete.
+
+Variants
+
+GET /variants/:id — get variant details.
+
+Admin create/update/delete under /admin/variants.
+
+Cart
+
+GET /cart — get current user cart (auth).
+
+POST /cart/items — add item ({ productId, variantId, qty }) (auth).
+
+PATCH /cart/items/:itemId — change qty (auth).
+
+DELETE /cart/items/:itemId — remove item (auth).
+
+POST /cart/clear — clear cart (auth).
+
+Notes: use server-side validation, price recheck on checkout.
+
+Wishlist
+
+GET /wishlist — list (auth).
+
+POST /wishlist — add item { productId, variantId? } (auth). Use atomic static Wishlist.atomicAdd(userId, ...).
+
+DELETE /wishlist — remove item { productId, variantId? } (auth) or DELETE /wishlist/:itemId.
+
+GET /wishlist/exists?productId=...&variantId=... — optional quick check.
+
+Orders
+
+GET /orders — list user orders (auth, pagination).
+
+GET /orders/:id — order details (auth, ensure owner or admin).
+
+POST /orders — create order (auth) — idempotency-key required; flow:
+
+Validate cart/pricing on server.
+
+Create Order (status: pending).
+
+Create Payment (pending) if not COD.
+
+Return order + payment client payload (e.g., payment link).
+
+POST /orders/:id/cancel — cancel (auth + business rules).
+
+POST /orders/:id/return — request return.
+
+Admin:
+
+PATCH /admin/orders/:id/status — update status + push statusHistory.
+
+GET /admin/orders — admin order listing & filters.
+
+Payments
+
+POST /payments/create — create payment intent for order (auth) — idempotency-key required.
+
+POST /payments/webhook — provider webhook (public endpoint, validate signature) — update Payment & Order atomically.
+
+GET /payments/:id — get payment (auth/admin).
+
+POST /payments/:id/refund — request refund (admin or automated).
+
+Notes: use signature verification, idempotency, and store provider response.
+
+Reviews
+
+POST /products/:id/reviews — add review (auth) — ensure user bought product (optional).
+
+GET /products/:id/reviews — list reviews with pagination.
+
+DELETE /reviews/:id — user/admin can delete.
+
+Coupons
+
+POST /coupons (admin create)
+
+GET /coupons/validate?code=XXX&orderTotal=123 — validate & compute discount.
+
+Admin
+
+Resource CRUD for products, categories, orders, refunds, users.
+
+GET /admin/analytics/sales — sales reports (protected, limited).
+
+
+
+// app/api/auth/otp/verify/route.ts
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { User } from "@/models/User";
+import { formatZodError } from "@/lib/validation";
+
+const VerifySchema = z.object({
+  identifier: z.string(),
+  otp: z.string().length(6)
+});
+
+export async function POST(req) {
+  const raw = await req.json().catch(() => ({}));
+  const p = VerifySchema.safeParse(raw);
+  if (!p.success) return NextResponse.json({ ok: false, error: formatZodError(p.error) }, { status: 422 });
+
+  const { identifier, otp } = p.data;
+  const user = await User.findOne({ $or: [{ email: identifier }, { phone: identifier }] });
+  if (!user) return NextResponse.json({ ok: false, error: { code: "invalid", message: "Invalid credentials" } }, { status: 401 });
+
+  const res = await user.verifyOtp(otp); // your helper
+  if (!res.ok) return NextResponse.json({ ok: false, error: { code: res.reason, message: res.reason } }, { status: 401 });
+
+  // issue tokens and return
+  const tokens = await issueTokensForUser(user);
+  return NextResponse.json({ ok: true, data: { tokens } });
+}

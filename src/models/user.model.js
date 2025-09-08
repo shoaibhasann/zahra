@@ -1,6 +1,8 @@
 import mongoose, { Schema } from "mongoose";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import { normalizeIndianPhoneNumber } from "@/helpers/validatePhone";
+import jwt from "jsonwebtoken";
 
 const addressSchema = new Schema({
   label: { type: String, maxlength: 30 },
@@ -32,7 +34,7 @@ const sessionSchema = new Schema(
   {
     sessionId: { type: String, required: true, index: true, unique: false },
 
-    refreshHash: { type: String, select: false },
+    refreshToken: { type: String, select: false },
 
     refreshExpiresAt: { type: Date, index: true },
 
@@ -49,7 +51,6 @@ const userSchema = new Schema(
   {
     fullname: {
       type: String,
-      required: [true, "Name is required"],
       minlength: [3, "Name must have at least 3 characters"],
       maxlength: [50, "Name cannot exceed 50 characters"],
     },
@@ -60,7 +61,10 @@ const userSchema = new Schema(
       trim: true,
       sparse: true,
       unique: true,
-      match: [/^\S+@\S+\.\S+$/, "Please enter a valid email"],
+      match: [
+        /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
+        "Please enter a valid email",
+      ],
     },
 
     emailVerified: { type: Boolean, default: false },
@@ -71,10 +75,6 @@ const userSchema = new Schema(
       type: String,
       sparse: true,
       unique: true,
-      match: [
-        /^\+\d{7,15}$/,
-        "Phone must be in E.164 format (e.g. +919812345678)",
-      ],
     },
 
     phoneVerified: { type: Boolean, default: false },
@@ -82,26 +82,13 @@ const userSchema = new Schema(
     password: {
       type: String,
       select: false,
-      required: false,
     },
 
     otp: otpSchema,
 
     lastOtpSentAt: Date,
 
-    failedOtpAttempts: { type: Number, default: 0, max: 6 },
-
-    // Auth methods: helpful to know how this user authenticates
-    authMethods: [
-      {
-        type: {
-          type: String,
-          enum: ["otp", "password", "google", "apple", "facebook"],
-          required: true,
-        },
-        providerId: String, // e.g., google sub
-      },
-    ],
+    otpRequestCount: { type: Number, default: 0, max: 20 },
 
     avatar: {
       public_id: String,
@@ -128,6 +115,12 @@ const userSchema = new Schema(
     totalOrders: { type: Number, default: 0 },
 
     totalSpent: { type: Number, default: 0 },
+
+    resetPassword: {
+      tokenHash: String,
+      expiresAt: Date,
+      createdAt: Date,
+    },
   },
   {
     timestamps: true,
@@ -145,13 +138,58 @@ const userSchema = new Schema(
   }
 );
 
-userSchema.index({ email: 1 }, { unique: true, sparse: true });
-userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 
-userSchema.methods.createOtpHash = function (otpPlain) {
-  const secret = process.env.OTP_SECRET || "change_me";
-  return crypto.createHmac("sha256", secret).update(otpPlain).digest("hex");
-};
+userSchema.methods.generateAccessToken = async function(sessionId){
+  const payload = {
+    sub: this._id,
+    sid: sessionId,
+    role: this.role,
+    name: this.fullname
+  }
+
+  return await jwt.sign(payload, process.env.ACESS_TOKEN_SECRET, { expiresIn: process.env.ACESS_TOKEN_EXPIRY})
+}
+
+userSchema.methods.generateRefreshToken = async function(sessionId){
+  const payload = {
+    sub: this._id,
+    sid: sessionId,
+    role: this.role,
+    name: this.fullname
+  }
+
+  return await jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET, {
+    expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+  });
+
+}
+
+userSchema.methods.createSession = async function(){
+  const refreshToken = this.generateRefreshToken();
+
+  const now = Date.now();
+  const expires = new Date(now + (7 * 24 *  60 * 60 * 1000));
+
+  const sessionId = crypto.randomBytes(12).toString("hex");
+
+  const sessionObj = {
+    sessionId,
+    refreshToken,
+    refreshExpiresAt : expires,
+    createdAt: new Date(now),
+    revoked: false,
+    replacedBy: null
+
+  }
+
+  this.sessions = this.sessions || [];
+  this.sessions.push(sessionObj);
+
+  await this.save();
+
+  return { refreshToken, sessionId, refreshExpiresAt: expires }
+}
+
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
@@ -173,88 +211,6 @@ userSchema.methods.comparePassword = async function (password) {
   }
 };
 
-userSchema.methods.generateOtp = async function (
-  channel = "sms",
-  ttlSeconds = 600
-) {
-  const plainOtp = String(Math.floor(Math.random() * 900000 + 100000));
-  const otpHash = this.createOtpHash(plainOtp);
-  const expires = new Date(Date.now() + ttlSeconds * 1000);
-
-  this.otp = {
-    otpHash,
-    channel,
-    expiresAt: expires,
-    createdAt: new Date(),
-  };
-
-  this.lastOtpSentAt = new Date();
-  this.failedOtpAttempts = 0;
-
-  return otp;
-};
-
-userSchema.methods.verifyOtp = async function (plainOtp) {
-  if (!this.otp || !this.otp.otpHash) {
-    return {
-      success: false,
-      message: "no_otp",
-    };
-  }
-
-  if (this.otp.expiresAt < new Date()) {
-    return {
-      success: false,
-      messgae: "otp_expired",
-    };
-  }
-
-  const storedHex = this.otp.otpHash;
-  const candidateHex = this.createOtpHash(plainOtp);
-
-  let match = false;
-
-  try {
-    const a = Buffer.from(storedHex, "hex");
-    const b = Buffer.from(candidateHex, "hex");
-
-    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
-      match = true;
-    }
-  } catch (error) {
-    match = false;
-    throw error;
-  }
-
-  if (!match) {
-    this.failedOtpAttempts = (this.failedOtpAttempts || 0) + 1;
-    await this.save();
-
-    if (this.failedOtpAttempts >= 6) {
-      return {
-        success: false,
-        message: "Otp creation range exceeded",
-      };
-    }
-
-    return {
-      success: false,
-      message: "invalid",
-    };
-  }
-
-  const verifiedChannel = this.otp.channel;
-
-  this.otp = undefined;
-  this.failedOtpAttempts = 0;
-
-  if (verifiedChannel === "sms") this.phoneVerified = true;
-  if (verifiedChannel === "email") this.emailVerified = true;
-
-  await this.save();
-
-  return { sucess: true, message: "otp verified successfully" };
-};
 
 export const UserModel =
   mongoose.models.User || mongoose.model("User", userSchema);
