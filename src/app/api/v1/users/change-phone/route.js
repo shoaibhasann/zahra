@@ -1,4 +1,5 @@
 import { generateOtp } from "@/helpers/generateOtp";
+import { getUserId } from "@/helpers/getUserId";
 import { normalizeIndianPhoneNumber } from "@/helpers/validatePhone";
 import { dbConnect } from "@/lib/dbConnect";
 import { UserModel } from "@/models/user.model";
@@ -7,9 +8,9 @@ import { NextResponse } from "next/server";
 export async function POST(request) {
   await dbConnect();
   try {
-    const body = await request.json();
-    const { phoneNumber } = body;
-    const { user: userId } = request.user;
+   
+    const { phoneNumber } = await request.json();
+    const userId = getUserId(request);
 
     const normalizedPhone = normalizeIndianPhoneNumber(phoneNumber);
     const isPhone = !!normalizedPhone;
@@ -24,11 +25,11 @@ export async function POST(request) {
       );
     }
 
-    const userExists = await UserModel.findById(userId).select(
+    const existingUser = await UserModel.findById(userId).select(
       "-otp -lastOtpSentAt -otpRequestCount"
     );
 
-    if (!userExists) {
+    if (!existingUser) {
       return NextResponse.json(
         {
           success: false,
@@ -65,8 +66,6 @@ export async function POST(request) {
     }
 
         if (!result || !result.success) {
-          userExists.pendingPhone = undefined;
-          await userExists.save();
           console.error("OTP send failure: ", result?.error || "unknown");
           return NextResponse.json(
             { success: false, message: "Failed to send OTP, please try again after some time" },
@@ -74,14 +73,14 @@ export async function POST(request) {
           );
         }
 
-    userExists.pendingPhone = {
+    existingUser.pendingPhone = {
       value: normalizedPhone,
       otpHash,
       expiresAt,
       createdAt,
     };
 
-    await userExists.save();
+    await existingUser.save();
 
     return NextResponse.json(
       {
@@ -91,7 +90,8 @@ export async function POST(request) {
       { status: 200 }
     );
 
-  } catch (error) {
+  } catch (err) {
+    console.error("POST /users/change-phone error: ", err);
     return NextResponse.json(
       {
         success: false,

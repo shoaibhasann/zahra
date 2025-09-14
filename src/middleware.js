@@ -1,29 +1,47 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 
+const SECRET = process.env.REFRESH_TOKEN_SECRET;
+const secretKey = new TextEncoder().encode(SECRET);
 
 export async function middleware(request) {
-  const cookieStore = cookies();
-  const token = cookieStore.get("refreshToken")?.value;
 
-  if (!token) {
-    return NextResponse.redirect(new URL("/login", request.nextUrl));
+  const cookieToken = request.cookies.get("refreshToken")?.value ?? null;
+
+  if (!cookieToken) {
+    console.warn("middleware -> no refreshToken cookie, redirecting");
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  let token = cookieToken.startsWith("Bearer ")
+    ? cookieToken.split(" ")[1]
+    : cookieToken;
+  token = decodeURIComponent(token);
+
   try {
-    const payload = jwt.verify(token, TOKEN_SECRET);
+    const { payload } = await jwtVerify(token, secretKey);
 
     const headers = new Headers(request.headers);
     headers.set("x-user-id", String(payload.sub));
-    headers.set("x-user-role", String(payload.role || ""));
+    if (payload.role) headers.set("x-user-role", String(payload.role));
 
     return NextResponse.next({ request: { headers } });
   } catch (err) {
-    return NextResponse.redirect(new URL("/login", request.nextUrl));
+    console.error(
+      "middleware -> jwtVerify failed:",
+      err?.name,
+      err?.message || err
+    );
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/orders/:path*", "/payments/:path*"],
+  matcher: [
+    "/api/v1/:path*",
+    "/admin/:path*",
+    "/orders/:path*",
+    "/payments/:path*",
+    "/users/:path*",
+  ],
 };

@@ -8,8 +8,16 @@ import { getUserId } from "@/helpers/getUserId";
 export async function POST(request) {
   await dbConnect();
   try {
-    const { otp: plainOtp } = await request.json();
     const userId = getUserId(request);
+
+    if(!userId){
+      return NextResponse.json({
+        success: false,
+        message: "Unauthorized, please login first"
+      });
+    }
+    
+    const { otp: plainOtp } = await request.json();
 
     if(!plainOtp || plainOtp.trim().length !== 6){
         return NextResponse.json({
@@ -29,7 +37,7 @@ export async function POST(request) {
         }, { status: 401})
     }
 
-    if(!existingUser.pendingPhone || !existingUser.pendingPhone.otpHash){
+    if(!existingUser.pendingEmail || !existingUser.pendingEmail.otpHash){
          return NextResponse.json(
            {
              success: false,
@@ -39,8 +47,8 @@ export async function POST(request) {
          );
     }
 
-    if(new Date(existingUser.pendingPhone.expiresAt).getTime() < Date.now()){
-        existingUser.pendingPhone = undefined;
+    if(new Date(existingUser.pendingEmail.expiresAt).getTime() < Date.now()){
+        existingUser.pendingEmail = undefined;
         await existingUser.save();
         return NextResponse.json({ success: false, message: "OTP has expired" }, { status: 400 });
     }
@@ -50,7 +58,7 @@ export async function POST(request) {
 
     try {
         const a = Buffer.from(candidateHash, "hex");
-        const b = Buffer.from(existingUser.pendingPhone.otpHash, "hex");
+        const b = Buffer.from(existingUser.pendingEmail.otpHash, "hex");
 
         if(a.length === b.length && crypto.timingSafeEqual(a,b)){
             isOtpVerified = true;
@@ -68,17 +76,16 @@ export async function POST(request) {
           return NextResponse.json({ success: false, message: "Incorrect OTP" }, { status: 400 });
      }
 
-     existingUser.phone = existingUser.pendingPhone.value;
-     existingUser.pendingPhone = undefined;
+     existingUser.email = existingUser.pendingEmail.value;
+     existingUser.pendingEmail = undefined;
      await existingUser.save();
 
      return NextResponse.json({
         success: true,
-        message: "Phone number updated successfully"
+        message: "Email updated successfully"
      }, { status: 200 });
 
-  } catch (err) {
-    console.error("POST /users/update-phone error: ", err);
+  } catch (error) {
     return NextResponse.json(
       {
         success: false,

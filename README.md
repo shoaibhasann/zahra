@@ -142,9 +142,9 @@ PATCH /users/me — update profile (auth).
 
 GET /users/:id — get public profile (public).
 
-GET /users/:id/addresses — list addresses (auth).
+GET /users/addresses/:id — list addresses (auth).
 
-POST /users/me/addresses — add address (auth).
+POST /users/addresses/add — add address (auth).
 
 PATCH /users/me/addresses/:addrId — update address (auth).
 

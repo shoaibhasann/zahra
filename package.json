@@ -12,6 +12,7 @@
     "@react-email/components": "^0.5.2",
     "@react-email/render": "^1.2.2",
     "bcrypt": "^6.0.0",
+    "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "libphonenumber-js": "^1.12.15",
     "mongoose": "^8.18.0",

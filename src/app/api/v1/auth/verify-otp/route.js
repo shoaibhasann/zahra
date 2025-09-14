@@ -105,8 +105,8 @@ export async function POST(request) {
     };
 
     return NextResponse.json(body, { status: 200 });
-  } catch (error) {
-    console.error("Error while verifying OTP:", error);
+  } catch (err) {
+    console.error("POST /auth/verify-otp", err);
     return NextResponse.json({ success: false, message: "Internal Server Error" }, { status: 500 });
   }
 }

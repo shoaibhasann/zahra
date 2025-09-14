@@ -140,7 +140,7 @@ export async function POST(request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error while sending OTP:", error);
+    console.error("POST /auth/login error: ", err);
     return NextResponse.json(
       { success: false, message: "Internal Server Error" },
       { status: 500 }
