@@ -1,3 +1,4 @@
+import { recomputeProductStock } from "@/lib/recomputeStock";
 import mongoose, { Schema } from "mongoose";
 import { required } from "zod/v4/core/util.cjs";
 
@@ -62,6 +63,15 @@ const variantSchema = new Schema({
 variantSchema.index({ "sizes.sku": 1 }, { unique: true, sparse: true });
 variantSchema.index({ productId: 1, color: 1 }, { unique: true });
 variantSchema.index({ productId: 1 });
+
+variantSchema.post("save", function (doc) {
+  recomputeProductStock(doc.productId).catch(err => console.error("stock recompute save: ", err));
+});
+
+variantSchema.post("remove", function (doc) {
+  recomputeProductStock(doc.productId).catch(err => console.error("stock recompute remove: ", err));
+});
+
 
 export const VariantModel =
   mongoose.models.Variant || mongoose.model("Variant", variantSchema);

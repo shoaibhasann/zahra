@@ -161,7 +161,7 @@ GET /products/:slugOrId — product details (populate variants).
 GET /categories — list categories.
 
 GET /categories/:id/products — products by category.
-
+  
 Admin:
 
 POST /admin/products — create product.

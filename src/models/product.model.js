@@ -54,6 +54,11 @@ const productSchema = new Schema(
       max: 60,
     },
 
+    finalPrice: {
+      type: Number,
+      min: 0
+    },
+
     hsnCode: {
       type: String,
       required: true,
@@ -97,6 +102,18 @@ const productSchema = new Schema(
         ref: "Variant"
       }
     ],
+
+    availableStock: {
+      type: Number,
+      default: 0,
+      index: true
+    },
+    
+    hasStock: {
+      type: Boolean,
+      default: false,
+      index: true
+    }
   },
   {
     timestamps: true,
