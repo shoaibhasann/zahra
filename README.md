@@ -351,3 +351,24 @@ C) Produce a test plan with concrete test cases and Postman/curl examples for au
 D) Design the session management UI data contract + wireframe copy (list item fields, actions).
 
 Which one shall I draft next?
+
+
+
+
+5) Suggested API path map — minimal
+
+POST /api/products → create product
+
+GET /api/products → list (filters, search, pagination)
+
+GET /api/products/:id → get product (optionally include variants)
+
+PATCH /api/products/:id → update product
+
+DELETE /api/products/:id → delete product (and cascade variants?)
+
+POST /api/products/:productId/variants → create variant
+
+PATCH /api/variants/:id → update variant (sizes/stock)
+
+DELETE /api/variants/:id → delete variant

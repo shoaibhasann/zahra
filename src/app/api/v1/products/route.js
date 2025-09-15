@@ -4,7 +4,7 @@ import { ProductModel } from "@/models/product.model";
 import { productQuerySchema } from "@/schemas/productquerySchema";
 import { NextResponse } from "next/server";
 
-export async function GET(request, { params }){
+export async function GET(request){
     await dbConnect();
 
     try {

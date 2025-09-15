@@ -54,11 +54,6 @@ const productSchema = new Schema(
       max: 60,
     },
 
-    finalPrice: {
-      type: Number,
-      min: 0
-    },
-
     hsnCode: {
       type: String,
       required: true,

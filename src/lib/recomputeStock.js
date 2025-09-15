@@ -1,26 +1,39 @@
-import { ProductModel } from "@/models/product.model";
-import { VariantModel } from "@/models/variant.model";
 import mongoose from "mongoose";
+import { VariantModel } from "@/models/variant.model";
+import { ProductModel } from "@/models/product.model";
 
-export async function recomputeProductStock(productId){
-    if(!productId) return 0;
 
-    const pid = mongoose.Types.ObjectId(productId);
+export async function recomputeProductStock(productId, opts = {}) {
+  const { session } = opts;
+  if (!productId) return 0;
 
-    const agg = await VariantModel.aggregate([
-        { $match: {productId: pid, isActive: true}},
-        { $unwind: "$sizes" },
-        { $match: { "sizes.stock" : { $gt: 0 }} },
-        { $group: { _id: "$productId", totalStock: { $sum: "$sizes.stock"} } }
-    ]);
+  const pid =
+    productId instanceof mongoose.Types.ObjectId
+      ? productId
+      : new mongoose.Types.ObjectId(String(productId));
 
-    const totalStock = (agg[0] && agg[0].totalStock) ? agg[0].totalStock : 0;
+  const agg = await VariantModel.aggregate(
+    [
+      { $match: { productId: pid, isActive: true } },
+      { $unwind: { path: "$sizes", preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $ifNull: ["$sizes.stock", 0] } },
+        },
+      },
+    ],
+    session ? { session } : {}
+  );
 
-    await ProductModel.findByIdAndUpdate(
-        productId,
-        { $set: { availableStock: totalStock, hasStock: totalStock > 0 }},
-        { new: true }
-    ).exec();
+  const total =
+    agg && agg[0] && typeof agg[0].total === "number" ? agg[0].total : 0;
 
-    return totalStock;
+  await ProductModel.findByIdAndUpdate(
+    pid,
+    { availableStock: total, hasStock: total > 0 },
+    { session, new: true }
+  );
+
+  return total;
 }

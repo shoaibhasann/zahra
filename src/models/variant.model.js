@@ -1,6 +1,5 @@
 import { recomputeProductStock } from "@/lib/recomputeStock";
 import mongoose, { Schema } from "mongoose";
-import { required } from "zod/v4/core/util.cjs";
 
 const sizeSchema = new Schema({
   size: {
@@ -26,13 +25,11 @@ const variantSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: "Product",
     required: true,
-    index: true
   },
   
   color: {
     type: String,
     required: true,
-    index: true
   },
 
   isActive: {
@@ -62,7 +59,7 @@ const variantSchema = new Schema({
 
 variantSchema.index({ "sizes.sku": 1 }, { unique: true, sparse: true });
 variantSchema.index({ productId: 1, color: 1 }, { unique: true });
-variantSchema.index({ productId: 1 });
+
 
 variantSchema.post("save", function (doc) {
   recomputeProductStock(doc.productId).catch(err => console.error("stock recompute save: ", err));
