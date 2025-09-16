@@ -22,7 +22,9 @@ export async function middleware(request) {
     const { payload } = await jwtVerify(token, secretKey);
 
     const headers = new Headers(request.headers);
+
     headers.set("x-user-id", String(payload.sub));
+    
     if (payload.role) headers.set("x-user-role", String(payload.role));
 
     return NextResponse.next({ request: { headers } });
@@ -35,6 +37,7 @@ export async function middleware(request) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 }
+
 
 export const config = {
   matcher: [

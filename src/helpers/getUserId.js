@@ -3,5 +3,7 @@ export function getUserId(request) {
 }
 
 export function getUserRole(request) {
-  return request?.headers?.get("x-user-role") || null;
+  return (
+    request.headers.get("x-user-role") || request.headers.get("X-User-Role") || null
+  );
 }

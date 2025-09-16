@@ -11,6 +11,7 @@ export async function POST(request, { params }) {
   await dbConnect();
 
   const { productId } = params;
+  
   if (!isValidObjectId(productId)) {
     return NextResponse.json(
       { success: false, message: "Invalid productId" },

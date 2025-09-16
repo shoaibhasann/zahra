@@ -354,21 +354,13 @@ Which one shall I draft next?
 
 
 
+GET    /api/variants/:variantId              -> get variant
+PATCH  /api/variants/:variantId              -> patch top-level fields (color, isActive) & small updates
+PATCH  /api/variants/:variantId/images       -> replace images array (or use POST for add/remove)
+POST   /api/variants/:variantId/images       -> add single image
+DELETE /api/variants/:variantId/images/:imgId-> remove image
 
-5) Suggested API path map — minimal
-
-POST /api/products → create product
-
-GET /api/products → list (filters, search, pagination)
-
-GET /api/products/:id → get product (optionally include variants)
-
-PATCH /api/products/:id → update product
-
-DELETE /api/products/:id → delete product (and cascade variants?)
-
-POST /api/products/:productId/variants → create variant
-
-PATCH /api/variants/:id → update variant (sizes/stock)
-
-DELETE /api/variants/:id → delete variant
+POST   /api/variants/:variantId/sizes        -> add a size
+PATCH  /api/variants/:variantId/sizes/:sizeId-> update one size
+DELETE /api/variants/:variantId/sizes/:sizeId-> delete one size
+PUT    /api/variants/:variantId/sizes        -> bulk replace sizes (explicit)
