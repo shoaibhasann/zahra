@@ -16,6 +16,7 @@ const sizeItemSchema = z.object({
 
 
 export const singleVariantSchema = z.object({
+  
   color: z
     .string({ required_error: "Color is required" })
     .min(1, "Color cannot be empty"),

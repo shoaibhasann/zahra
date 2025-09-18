@@ -6,12 +6,22 @@ import { VariantModel } from "@/models/variant.model";
 import { recomputeProductStock } from "@/lib/recomputeStock";
 import { createMultipleVariantsSchema } from "@/schemas/createVariantSchema";
 import { isValidObjectId } from "@/helpers/isValidObject";
+import { getUserRole } from "@/helpers/getUserId";
 
 export async function POST(request, { params }) {
   await dbConnect();
 
+  const role = getUserRole();
+
+  if (role !== "Admin") {
+    return NextResponse.json({
+      success: false,
+      message: "Unauthorized, page not found",
+    });
+  }
+
   const { productId } = params;
-  
+
   if (!isValidObjectId(productId)) {
     return NextResponse.json(
       { success: false, message: "Invalid productId" },
@@ -20,10 +30,9 @@ export async function POST(request, { params }) {
   }
 
   try {
-    const body = await request.json();
+    const raw = await request.json().catch(() => ({}));
 
-    
-    const parsed = createMultipleVariantsSchema.safeParse(body);
+    const parsed = createMultipleVariantsSchema.safeParse(raw);
     if (!parsed.success) {
       return NextResponse.json(
         { success: false, errors: parsed.error.issues },
@@ -40,10 +49,10 @@ export async function POST(request, { params }) {
       );
     }
 
-
     const payloadSkus = variantsPayload.flatMap((v) =>
       (v.sizes || []).map((s) => String(s.sku).trim())
     );
+
     if (payloadSkus.length === 0) {
       return NextResponse.json(
         { success: false, message: "No SKUs provided in payload" },
@@ -54,6 +63,7 @@ export async function POST(request, { params }) {
     const existingVariantWithSkus = await VariantModel.findOne({
       "sizes.sku": { $in: payloadSkus },
     }).lean();
+
     if (existingVariantWithSkus) {
       const existingSkus = new Set(
         existingVariantWithSkus.sizes.map((s) => s.sku)
@@ -61,13 +71,11 @@ export async function POST(request, { params }) {
 
       const conflict = payloadSkus.find((sku) => existingSkus.has(sku));
 
-
       return NextResponse.json(
         { success: false, message: `SKU already exists: ${conflict}` },
         { status: 409 }
       );
     }
-
 
     const session = await mongoose.startSession();
 
@@ -81,13 +89,11 @@ export async function POST(request, { params }) {
             ...v,
           }));
 
-
           const insertRes = await VariantModel.insertMany(docsToInsert, {
             session,
           });
           createdVariants = insertRes;
 
-          
           const firstVariantImage = insertRes[0]?.images?.[0];
           if (
             (!product.images || product.images.length === 0) &&
@@ -100,7 +106,6 @@ export async function POST(request, { params }) {
             );
           }
 
-          
           await recomputeProductStock(productId, { session });
         },
         {
@@ -110,7 +115,6 @@ export async function POST(request, { params }) {
         }
       );
 
-      
       return NextResponse.json(
         {
           success: true,
@@ -121,9 +125,8 @@ export async function POST(request, { params }) {
         { status: 201 }
       );
     } catch (txnErr) {
-
       console.error("Transaction failed:", txnErr);
-      
+
       if (txnErr?.code === 11000) {
         const key = Object.keys(txnErr.keyValue || {}).join(", ");
         return NextResponse.json(
