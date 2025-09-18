@@ -10,7 +10,7 @@ const imageSchema = z.object({
   secure_url: z.string().url("secure_url must be a valid URL"),
 });
 
-const sizeSchema = z.object({
+export const updateSizeSchema = z.object({
   _id: z
     .string()
     .optional()
@@ -20,6 +20,10 @@ const sizeSchema = z.object({
   size: z.string().min(1, "size is required"),
   stock: z.number().int().nonnegative().optional(),
   sku: z.string().min(1, "sku is required"),
+  isActive: z
+      .boolean()
+      .optional()
+      .default(true)
 });
 
 export const updateVariantSchema = z
@@ -29,7 +33,7 @@ export const updateVariantSchema = z
     isActive: z.boolean().optional(),
     images: z.array(imageSchema).optional(),
     sizes: z
-      .array(sizeSchema)
+      .array(updateSizeSchema)
       .optional()
       .refine(
         (arr) => {

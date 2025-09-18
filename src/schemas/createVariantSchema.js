@@ -1,17 +1,25 @@
 import { z } from "zod";
 
 
-const sizeItemSchema = z.object({
+export const sizeItemSchema = z.object({
   size: z
     .string({ required_error: "Size is required" })
+    .trim()
     .min(1, "Size cannot be empty"),
   stock: z
     .number({ required_error: "Stock is required" })
     .int("Stock must be integer")
+    .nonnegative()
     .min(0, "Stock cannot be negative"),
   sku: z
     .string({ required_error: "SKU is required" })
+    .trim()
+    .toUpperCase()
     .min(1, "SKU cannot be empty"),
+  isActive: z
+    .boolean()
+    .optional()
+    .default(true)
 });
 
 

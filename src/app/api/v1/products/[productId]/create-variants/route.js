@@ -11,7 +11,7 @@ import { getUserRole } from "@/helpers/getUserId";
 export async function POST(request, { params }) {
   await dbConnect();
 
-  const role = getUserRole();
+  const role = await getUserRole(request);
 
   if (role !== "Admin") {
     return NextResponse.json({

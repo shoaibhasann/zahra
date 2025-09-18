@@ -1,4 +1,3 @@
-import { escapeRegex } from "@/helpers/escregex";
 import { getUserRole } from "@/helpers/getUserId";
 import { isValidObjectId } from "@/helpers/isValidObject";
 import { dbConnect } from "@/lib/dbConnect";
@@ -6,17 +5,14 @@ import { recomputeProductStock } from "@/lib/recomputeStock";
 import { ProductModel } from "@/models/product.model";
 import { VariantModel } from "@/models/variant.model";
 import { singleVariantSchema } from "@/schemas/createVariantSchema";
-import {
-  isDuplicateKeyError,
-  parseDuplicateKeyError,
-} from "@/helpers/mongoError";
 import { NextResponse } from "next/server";
 
 export async function POST(request, { params }) {
   await dbConnect();
 
   try {
-    const role = getUserRole(request);
+
+    const role = await getUserRole(request);
 
     if (role !== "Admin") {
       return NextResponse.json(
@@ -34,8 +30,18 @@ export async function POST(request, { params }) {
       );
     }
 
-    const raw = await request.json().catch(() => ({}));
+    const product = await ProductModel.findById(productId)
+      .select("_id images")
+      .exec();
 
+    if (!product) {
+      return NextResponse.json(
+        { success: false, message: "Product not found" },
+        { status: 404 }
+      );
+    }
+
+    const raw = await request.json().catch(() => ({}));
     const parsed = singleVariantSchema.safeParse(raw);
 
     if (!parsed.success) {
@@ -51,12 +57,37 @@ export async function POST(request, { params }) {
 
     const variantPayload = parsed.data;
 
+    
     const sizes = Array.isArray(variantPayload.sizes)
       ? variantPayload.sizes
       : [];
 
-    const payloadSkus = sizes.map((s) => s.sku).filter(Boolean);
+    
+    const normalizedSizes = sizes.map((s) => ({
+      ...s,
+      sku: typeof s.sku === "string" ? s.sku.trim().toUpperCase() : s.sku,
+    }));
 
+   
+    const seen = new Set();
+    for (const s of normalizedSizes) {
+      const sku = s.sku;
+      if (!sku) {
+        return NextResponse.json(
+          { success: false, message: "Each size must have a SKU" },
+          { status: 400 }
+        );
+      }
+      if (seen.has(sku)) {
+        return NextResponse.json(
+          { success: false, message: `Duplicate SKU in payload: ${sku}` },
+          { status: 400 }
+        );
+      }
+      seen.add(sku);
+    }
+
+    const payloadSkus = Array.from(seen);
     if (payloadSkus.length === 0) {
       return NextResponse.json(
         { success: false, message: "No SKUs provided in payload" },
@@ -64,22 +95,54 @@ export async function POST(request, { params }) {
       );
     }
 
-    const product = await ProductModel.findById(productId)
-      .select("_id images")
-      .exec();
+    const existingVariantWithSkus = await VariantModel.findOne({
+      "sizes.sku": { $in: payloadSkus },
+    }).lean();
 
-    if (!product) {
+    if (existingVariantWithSkus) {
+      const existingSkus = new Set(
+        (existingVariantWithSkus.sizes || []).map((x) =>
+          typeof x.sku === "string" ? x.sku.trim().toUpperCase() : x.sku
+        )
+      );
+
+      const conflict = payloadSkus.find((sku) => existingSkus.has(sku));
       return NextResponse.json(
-        { success: false, message: "Product not found" },
-        { status: 404 }
+        { success: false, message: `SKU already exists: ${conflict}` },
+        { status: 409 }
       );
     }
 
-    const created = await VariantModel.create([
-      { productId, ...variantPayload },
-    ]);
+
+    const createPayload = {
+      productId,
+      ...variantPayload,
+      sizes: normalizedSizes,
+    };
+
+    let created;
+
+    try {
+      created = await VariantModel.create([createPayload]);
+    } catch (createErr) {
+  
+      if (createErr && createErr.code === 11000) {
+        const dupKey = createErr.keyValue || {};
+       
+        const dupField = Object.keys(dupKey)[0] || "sku";
+        return NextResponse.json(
+          {
+            success: false,
+            message: `SKU conflict (duplicate key): ${JSON.stringify(dupKey)}`,
+          },
+          { status: 409 }
+        );
+      }
+      throw createErr;
+    }
 
     const newVariant = created[0];
+
 
     if (
       (!product.images || product.images.length === 0) &&

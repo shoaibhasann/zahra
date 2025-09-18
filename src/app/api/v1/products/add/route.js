@@ -1,3 +1,4 @@
+import { getUserRole } from "@/helpers/getUserId";
 import { dbConnect } from "@/lib/dbConnect";
 import { ProductModel } from "@/models/product.model";
 import { createProductSchema } from "@/schemas/createProductSchema";
@@ -7,6 +8,16 @@ export async function POST(request){
     await dbConnect();
 
     try {
+
+        const role = await getUserRole(request);
+
+        if(role !== "Admin"){
+          return NextResponse.json({
+            success: false,
+            message: "Unauthorized"
+          }, { status: 401 });
+        }
+        
         const body = await request.json();
 
         const parsed = createProductSchema.safeParse(body);

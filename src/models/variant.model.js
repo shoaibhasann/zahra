@@ -13,6 +13,11 @@ const sizeSchema = new Schema({
     min: 0,
   },
 
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+
   sku: {
     type: String,
     required: true,

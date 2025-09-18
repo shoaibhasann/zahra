@@ -363,4 +363,3 @@ DELETE /api/variants/:variantId/images/:imgId-> remove image
 POST   /api/variants/:variantId/sizes        -> add a size
 PATCH  /api/variants/:variantId/sizes/:sizeId-> update one size
 DELETE /api/variants/:variantId/sizes/:sizeId-> delete one size
-PUT    /api/variants/:variantId/sizes        -> bulk replace sizes (explicit)
