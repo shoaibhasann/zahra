@@ -1,6 +1,7 @@
 import { getUserRole } from "@/helpers/getUserId";
 import { isValidObjectId } from "@/helpers/isValidObject";
 import { dbConnect } from "@/lib/dbConnect";
+import { recomputeProductStock } from "@/lib/recomputeStock";
 import { VariantModel } from "@/models/variant.model";
 import { updateSizeSchema } from "@/schemas/updateVariantSchema";
 import { NextResponse } from "next/server";

@@ -17,9 +17,9 @@ export const updateSizeSchema = z.object({
     .refine((v) => (v ? isValidObjectId(v) : true), {
       message: "Invalid _id in sizes",
     }),
-  size: z.string().min(1, "size is required"),
+  size: z.string().min(1, "size is required").optional(),
   stock: z.number().int().nonnegative().optional(),
-  sku: z.string().min(1, "sku is required"),
+  sku: z.string().min(1, "sku is required").optional(),
   isActive: z
       .boolean()
       .optional()
