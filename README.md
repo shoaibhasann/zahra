@@ -190,15 +190,6 @@ POST /cart/clear — clear cart (auth).
 
 Notes: use server-side validation, price recheck on checkout.
 
-Wishlist
-
-GET /wishlist — list (auth).
-
-POST /wishlist — add item { productId, variantId? } (auth). Use atomic static Wishlist.atomicAdd(userId, ...).
-
-DELETE /wishlist — remove item { productId, variantId? } (auth) or DELETE /wishlist/:itemId.
-
-GET /wishlist/exists?productId=...&variantId=... — optional quick check.
 
 Orders
 

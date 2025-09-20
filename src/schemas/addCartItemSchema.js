@@ -37,7 +37,7 @@ export const addCartItemSchema = z.object({
 
 export const cartSchema = z
   .object({
-    userId: objectId,
+    userId: objectId.optional(),
     items: z
       .array(addCartItemSchema)
       .nonempty("Cart must have at least one item")
