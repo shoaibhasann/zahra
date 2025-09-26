@@ -41,10 +41,13 @@ export async function middleware(request) {
 
 export const config = {
   matcher: [
-    "/api/v1/:path*",
     "/admin/:path*",
     "/orders/:path*",
     "/payments/:path*",
     "/users/:path*",
+    "/cart/:path*",
+    "/cloudinary/:path*",
+    "/products/:path*",
+    "/variants/:path*"
   ],
 };

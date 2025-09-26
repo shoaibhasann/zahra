@@ -1,18 +1,21 @@
-// app/api/v1/shiprocket/check-shipping/route.js
 import { NextResponse } from "next/server";
 import { getShiprocketToken } from "@/lib/shiprocketToken";
+import axios from "axios";
 
-/**
- * Expects POST (from your frontend) with JSON body:
- * {
- *   "pickup_pincode": "244102",
- *   "delivery_pincode": "283203",
- *   "weight": 0.5,
- *   "cod": 0
- * }
- *
- * This route will call Shiprocket GET /courier/serviceability?pickup_postcode=...&delivery_postcode=...&weight=...&cod=...
- */
+function safeNum(v) {
+  if (v === null || v === undefined) return NaN;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const m = v.match(/-?\d+(\.\d+)?/);
+    if (m) return Number(m[0]);
+  }
+  return NaN;
+}
+
+function roundUpToNearestTen(num) {
+  if (!isFinite(num)) return num;
+  return Math.ceil(num / 10) * 10;
+}
 
 export async function POST(req) {
   try {
@@ -24,6 +27,8 @@ export async function POST(req) {
     );
     const weight = Number(payload.weight ?? 0.5);
     const cod = payload.cod === 1 || payload.cod === "1" ? 1 : 0;
+    const productValue =
+      payload.product_value != null ? Number(payload.product_value) : undefined;
 
     if (!pickup || !delivery) {
       return NextResponse.json(
@@ -32,42 +37,101 @@ export async function POST(req) {
       );
     }
 
-    // Build query params — encode to be safe
     const params = new URLSearchParams({
       pickup_postcode: pickup,
       delivery_postcode: delivery,
       weight: String(weight),
       cod: String(cod),
+      ...(productValue ? { declared_value: String(productValue) } : {}),
     });
 
-    // get cached token
     let token = await getShiprocketToken();
-
-    // call Shiprocket GET endpoint
     const url = `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${params.toString()}`;
 
-    let res = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
 
-    // If unauthorized, refresh token once and retry
-    if (res.status === 401) {
-      token = await getShiprocketToken(); // will refresh if expired
-      res = await fetch(url, {
-        method: "GET",
+    let axiosResponse;
+    try {
+      axiosResponse = await axios.get(url, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        
+        validateStatus: () => true,
+      });
+    } catch (err) {
+      console.error("axios network error:", err);
+      return NextResponse.json(
+        { error: "network error contacting shiprocket" },
+        { status: 502 }
+      );
+    }
+
+    if (axiosResponse.status === 401) {
+      token = await getShiprocketToken();
+      axiosResponse = await axios.get(url, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        validateStatus: () => true,
       });
     }
 
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const data = axiosResponse.data; 
+
+    const companies =
+      data?.data?.available_courier_companies ||
+      data?.raw?.data?.available_courier_companies ||
+      [];
+
+    if (!Array.isArray(companies) || companies.length === 0) {
+      
+      return NextResponse.json(
+        {
+          note: "No courier companies array found in Shiprocket response. Returning raw response.",
+          raw: data,
+        },
+        { status: 200 }
+      );
+    }
+
+   
+    const freightValues = companies
+      .map((c) => safeNum(c?.freight_charge))
+      .filter((v) => Number.isFinite(v));
+
+    if (freightValues.length === 0) {
+      return NextResponse.json(
+        {
+          note: "No numeric freight_charge values found. Returning raw response.",
+          raw: data,
+        },
+        { status: 200 }
+      );
+    }
+
+    const sum = freightValues.reduce((a, b) => a + b, 0);
+    const avg = sum / freightValues.length;
+    const shippingCost = roundUpToNearestTen(avg); 
+
+    const estimatedDelivery =
+      companies.find((c) => c?.estimated_delivery_days)
+        ?.estimated_delivery_days ||
+      companies[0]?.estimated_delivery_days ||
+      null;
+
+    return NextResponse.json(
+      {
+        success: true,
+        shippingCost,
+        raw_average: avg,
+        currency: data?.currency || "INR",
+        courier: companies[0]?.courier_name || null,
+        estimated_delivery_days: estimatedDelivery,
+      },
+      { status: 200 }
+    );
   } catch (err) {
     console.error("check-shipping error:", err);
     return NextResponse.json(
@@ -75,11 +139,4 @@ export async function POST(req) {
       { status: 500 }
     );
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    message:
-      "Use POST to call this server route with JSON body (it will call Shiprocket GET internally)",
-  });
 }
